@@ -48,20 +48,77 @@ zone, you need to setup route delegation to the new zone. After running
 commands to setup the delegation:
 
 ```bash
+export KUBE_DOMAN=yourdomain.com
+terraform apply -var name=k8s.$KUBE_DOMAN
 cat update-zone.json \
  | jq ".Changes[].ResourceRecordSet.Name=\"$(terraform output name).\"" \
  | jq ".Changes[].ResourceRecordSet.ResourceRecords=$(terraform output -json name_servers | jq '.value|[{"Value": .[]}]')" \
  > update-zone.json
 
 aws --profile=default route53 change-resource-record-sets \
- --hosted-zone-id $(aws --profile=default route53 list-hosted-zones | jq -r '.HostedZones[] | select(.Name=="yourdomain.com.") | .Id' | sed 's/\/hostedzone\///') \
+ --hosted-zone-id $(aws --profile=default route53 list-hosted-zones | jq -r '.HostedZones[] | select(.Name=="$KUBE_DOMAN.") | .Id' | sed 's/\/hostedzone\///') \
  --change-batch file://update-zone.json
 ```
 
 Wait until your changes propagate before continuing. You are good to go when
 
 ```bash
-host -a k8s.yourdomain.com
+host -a k8s.$KUBE_DOMAN
 ```
 
+## Configure the Master Nodes
+
+By deafult, the node type used is T2.medium, since this is a low cost demo, we should change the master nodes to be of type T2.micro
+todo this, enter the following command:
+```
+ kops edit ig nodes  
+```
+
+in the editor, change the follwoing line:
+```
+machineType: t2.micro
+```
+
+After editing, run the following:
+
+```
+kops update cluster $NAME
+```
+
+This will preview the changes, if you wish to proceed, then enter:
+
+```
+kops update cluster $NAME -y
+```
+
+
 returns the correct NS records.
+
+To Set The Type of Nodes
+
+## Creating a Pod and deploying
+
+example:
+```
+kubectl run kubernetes-bootcamp --image=gcr.io/google-samples/kubernetes-bootcamp:v1 --port=8080
+```
+
+to see the output of this pod, you will first need to launch the proxy:
+```
+kubectl proxy
+```
+
+Then to see the content try:
+
+```
+export POD_NAME=$(kubectl get pods -o go-template --template '{{range .items}}{{.metadata.name}}{{"\n"}}{{end}}')
+curl http://localhost:8001/api/v1/namespaces/default/pods/$POD_NAME/proxy/
+```
+
+
+## Deleting Cluster
+To delete the cluster you will need to execute the following:
+
+```
+ kops delete cluster $NAME --yes
+```
